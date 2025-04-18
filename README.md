@@ -87,7 +87,7 @@ A Python script that continuously syncs new data from PostgreSQL to BigQuery. Bi
 
 ### Looker Dashboard
 
-Looker Studio is used to connect to BigQuery data for data visualization. See "looker" folder for a snapshot of the live dashboard.
+Looker Studio is used to connect to BigQuery data for data visualization. See "looker" folder for a snapshot of the live dashboard, or check out [the dashboard link](https://lookerstudio.google.com/reporting/2187c07a-b5df-47b0-a857-25a4c1885e13).
 
 ## Setup
 
