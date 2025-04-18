@@ -2,10 +2,8 @@ from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.table import StreamTableEnvironment, EnvironmentSettings
 
 def main():
-    # Set up the Flink streaming environment
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
-    #env.enable_checkpointing(10 * 1000)
     settings = EnvironmentSettings.new_instance().in_streaming_mode().build()
     t_env = StreamTableEnvironment.create(env, environment_settings=settings)
 
@@ -21,7 +19,6 @@ def main():
 
     print("JARs set for pipeline:", t_env.get_config().get_configuration().get_string("pipeline.jars", "NOT FOUND"))
 
-    # f1_race_control
     t_env.execute_sql("""
     CREATE TABLE f1_race_control (
         session_key BIGINT,
@@ -43,7 +40,6 @@ def main():
     )
     """)
 
-    # f1_position (raw source)
     t_env.execute_sql("""
     CREATE TABLE f1_position_raw (
         session_key BIGINT,
@@ -64,7 +60,6 @@ def main():
     )
     """)
 
-    # Deduplicated, versioned changelog table
     t_env.execute_sql("""
     CREATE TABLE f1_position_latest (
         session_key BIGINT,
@@ -75,14 +70,13 @@ def main():
         WATERMARK FOR `date` AS `date` - INTERVAL '5' SECOND
     ) WITH (
         'connector' = 'upsert-kafka',
-        'topic' = 'f1-laps-enriched',
+        'topic' = 'f1-position-deduped',
         'properties.bootstrap.servers' = 'redpanda:9092',
         'key.format' = 'json',
         'value.format' = 'json'
     )
     """)
 
-    # Write deduplicated stream into f1_position_latest
     t_env.execute_sql("""
     INSERT INTO f1_position_latest
     SELECT session_key, driver_number, `date`, `position`
@@ -97,7 +91,6 @@ def main():
     WHERE row_num = 1
     """)
 
-    # f1_drivers
     t_env.execute_sql("""
     CREATE TABLE f1_drivers (
         session_key BIGINT,
@@ -117,7 +110,6 @@ def main():
     )
     """)
 
-    # f1_laps
     t_env.execute_sql("""
     CREATE TABLE f1_laps (
         session_key BIGINT,
@@ -140,7 +132,6 @@ def main():
     )
     """)
 
-    # Enriched view with temporal join
     t_env.execute_sql("""
     CREATE VIEW enriched_laps AS
     SELECT 
@@ -162,7 +153,6 @@ def main():
         ON laps.driver_number = drv.driver_number AND laps.session_key = drv.session_key
     """)
 
-    # Print sink for verification
     t_env.execute_sql("""
     CREATE TABLE lap_sink (
         session_key BIGINT,
@@ -186,7 +176,6 @@ def main():
         'sink.buffer-flush.max-rows' = '1'
     )
     """)
-
 
     statement_set.add_insert_sql("""
         INSERT INTO lap_sink 

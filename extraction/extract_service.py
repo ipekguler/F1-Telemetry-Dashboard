@@ -39,14 +39,13 @@ class F1DataExtractor:
         self.current_session_key = None
         self.last_data_counts = {'position': 0, 'drivers': 0, 'race_control': 0, 'laps': 0}
         self.session_active = False
-        self.seen_laps = {}  # Store (driver_number, lap_number): latest_record
+        self.seen_laps = {} 
 
 
     def simplify_date_string(self, record):
         for key in ['date', 'date_start']:
             if key in record and isinstance(record[key], str):
                 try:
-                    # Ensure 'Z' becomes '+00:00' to be ISO compliant
                     iso_str = record[key].replace('Z', '+00:00')
                     dt = datetime.fromisoformat(iso_str)
                     # Convert to 'Z' format with milliseconds
@@ -94,9 +93,8 @@ class F1DataExtractor:
             logger.info(f"New session detected: {latest_session_key}")
             self.current_session_key = latest_session_key
             self.last_data_counts = {'position': 0, 'drivers': 0, 'race_control': 0, 'laps': 0}
-            self.seen_laps = {}  # Clear previous laps
+            self.seen_laps = {} 
             self.session_active = True
-            #self.send_to_redpanda("f1-control", {"actn": "new_session", "session_key": self.current_session_key})
             return True
         return False
 
@@ -126,11 +124,9 @@ class F1DataExtractor:
                 if endpoint_name == "laps":
                     key = (filtered_record.get("driver_number"), filtered_record.get("lap_number"))
 
-                    # Update cache
                     if key not in self.seen_laps or self.seen_laps[key] != filtered_record:
                         self.seen_laps[key] = filtered_record
 
-                        # Only send if now complete
                         if all(value is not None for value in filtered_record.values()):
                             self.send_to_redpanda(f"f1-{endpoint_name}", filtered_record)
                             logger.info(f"Sent updated lap record for driver {key[0]}, lap {key[1]}")

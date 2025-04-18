@@ -83,7 +83,7 @@ Used as a source for syncing into BigQuery with a custom sync script.
 
 ### BigQuery Sync Script
 
-A Python script that continuously syncs new data from PostgreSQL to BigQuery. Bigquery tables are cleared when a new session begins and populated with new session data.
+A Python script that continuously syncs new data from PostgreSQL to BigQuery. Bigquery tables are cleared when a new session begins and populated with new session data. Since the data we keep will be limited, we will not be needing partitions for performance.
 
 ### Looker Dashboard
 

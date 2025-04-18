@@ -1,7 +1,7 @@
 version: '3'
 
 services:
-  # Redpanda - Streaming platform
+
   redpanda:
     image: redpandadata/redpanda:v23.2.14
     ports:
@@ -36,14 +36,12 @@ services:
     command: >
       "
       sleep 5 &&
-      rpk topic create f1-laps-enriched --brokers=redpanda:9092 &&
-      echo '✅ Topic f1-laps-enriched created'
+      rpk topic create f1-position-deduped --brokers=redpanda:9092 &&
+      echo 'Topic f1-position-deduped created'
       "
     networks:
       - f1-network
 
-
-  # Redpanda Console - Web UI for Redpanda
   redpanda-console:
     image: redpandadata/console:v2.3.1
     ports:
@@ -55,7 +53,6 @@ services:
     networks:
     - f1-network
 
-  # Data Extraction Service
   extraction-service:
     build:
       context: ./extraction
@@ -67,7 +64,6 @@ services:
     environment:
       - REDPANDA_BROKERS=redpanda:9092
     restart: unless-stopped
-    # Add healthcheck to ensure it only starts after Redpanda is ready
     healthcheck:
       test: ["CMD", "nc", "-z", "redpanda", "9092"]
       interval: 10s
@@ -88,14 +84,13 @@ services:
     ports:
       - "5432:5432"
     extra_hosts:
-     - "host.docker.internal:127.0.0.1" #// Linux
-     - "host.docker.internal:host-gateway" #// Access services on the host machine from within the Docker container
+     - "host.docker.internal:127.0.0.1" 
+     - "host.docker.internal:host-gateway" 
     volumes:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - f1-network
 
-  # Flink JobManager
   flink-jobmanager:
     image: flink:1.17.0-scala_2.12
     ports:
@@ -116,7 +111,6 @@ services:
     networks:
     - f1-network
 
-  # Flink TaskManager
   flink-taskmanager:
     image: flink:1.17.0-scala_2.12
     depends_on:
@@ -139,7 +133,6 @@ services:
     networks:
     - f1-network
 
-  # Flink Processing Job
   flink-processor:
     build:
       context: ./processing
@@ -159,7 +152,6 @@ services:
       - FLINK_JOBMANAGER_PORT=8081
     networks:
       - f1-network
-
 
   bq-sync:
     build:
