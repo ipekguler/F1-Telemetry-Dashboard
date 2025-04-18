@@ -81,15 +81,13 @@ Stores enriched driver lap data and race control data.
 
 Used as a source for syncing into BigQuery with a custom sync script.
 
----
-
-## BigQuery Sync Script (Python)
+### BigQuery Sync Script
 
 A Python script that continuously syncs new data from PostgreSQL to BigQuery. Bigquery tables are cleared when a new session begins and populated with new session data.
 
-## Looker Dashboard
+### Looker Dashboard
 
-See "looker" folder for a snapshot of the live dashboard.
+Looker Studio is used to connect to BigQuery data for data visualization. See "looker" folder for a snapshot of the live dashboard.
 
 ## Setup
 
@@ -114,7 +112,7 @@ $ terraform init
 $ terraform apply
 ```
 
-4. Run Services with Docker
+### 4. Run Services with Docker
 
 Run the pipeline with docker-compose.
 
