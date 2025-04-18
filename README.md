@@ -2,7 +2,7 @@
 
 This project creates a real-time data pipeline for streaming, processing, and visualizing [OpenF1](https://openf1.org/) Formula 1 telemetry data using **PyFlink**, **PostgreSQL**, **Redpanda**, **BigQuery**, and **Looker**.
 
-It ingests live F1 telemetry into Kafka topics, processes and joins the data using PyFlink, and sinks it into **PostgreSQL** and syncs it to **Google BigQuery** to generate a real-time dashboard.
+It ingests live F1 telemetry into Kafka topics, processes and joins the data using PyFlink, sinks it into **PostgreSQL** and syncs it to **Google BigQuery** to generate a real-time dashboard.
 
 ---
 
@@ -26,10 +26,10 @@ This pipeline works with the following Kafka topics:
 
 | Kafka Topic      | Description                                                                |
 |------------------|----------------------------------------------------------------------------|
-| `f1_laps`        | Lap-by-lap timing data per driver                                          |
-| `f1_position`    | Real-time driver position data                                             |
-| `f1_drivers`     | Static driver metadata (name, team, color)                                 |
-| `f1-race_control`| Session-level metadata (e.g., session start)                               |
+| `f1-laps`        | Lap-by-lap timing data per driver                                          |
+| `f1-position`    | Real-time driver position data                                             |
+| `f1-drivers`     | Static driver metadata (name, team, color)                                 |
+| `f1-race_control`| Race control data                                                          |
 
 ---
 
@@ -47,18 +47,18 @@ Joined and enriched lap data per driver for the latest session.
 | driver_number  | INTEGER     | Driver’s unique number                      |
 | lap_duration   | FLOAT       | Duration of lap                             |
 | lap_number     | INTEGER     | Lap number                                  |
-| st_speed       | INTEGER     | Sector 1 speed                              |
+| st_speed       | INTEGER     | Speed Trap data                             |
 | position       | INTEGER     | Driver's race position                      |
 | name_acronym   | STRING      | Driver acronym (e.g., VER, HAM)             |
 | team_name      | STRING      | Team name                                   |
-| team_colour    | STRING      | Team’s official color                       |
+| team_colour    | STRING      | Team’s official color code                  |
 
 ### `race_control`
-Official control messages (yellow flag, SC, etc.)
+Race control messages (yellow flag, SC, etc.)
 
 | Column         | Type        | Description                                 |
 |----------------|-------------|---------------------------------------------|
-| session_key    | INTEGER     | Unique session ID                           |
+| session_key    | INTEGER     | Unique identifier for session               |
 | date           | TIMESTAMP   | Timestamp of the message                    |
 | category       | STRING      | Category of control message                 |
 | flag           | STRING      | Race control flag (e.g. SC, RED, etc.)      |
@@ -68,16 +68,16 @@ Official control messages (yellow flag, SC, etc.)
 
 ## How It Works
 
-### 🌀 Streaming Pipeline (Flink):
-1. **Read from Redpanda topics**: `f1_laps`, `f1_position`, `f1_drivers`
-2. **Join & Enrich Data**: Combine real-time laps with driver and position metadata
-3. **Output**:
-   - **Upsert to Kafka topic**: `f1-laps-enriched`
-   - **Insert to PostgreSQL**: For historical verification
-   - **Insert to BigQuery**: For visualization in Looker
+### Redpanda
+1. **Data Ingested to Topics**: Extracts data from API services and sends them to `f1-laps`, `f1-position`, `f1-drivers`, `f1-race_control` topics
+
+### Flink:
+1. **Read from Redpanda topics**: Creates data sources for `f1-laps`, `f1-position`, `f1-drivers`, `f1-race_control`
+2. **Join & Enrich Data**: Combines real-time laps with driver and position data
+3. **Output**: Inserts data to PostgreSQL
 
 ### PostgreSQL
-Stores enriched lap data and race control data.  
+Stores enriched driver lap data and race control data.  
 
 Used as a source for syncing into BigQuery with a custom sync script.
 
@@ -85,17 +85,11 @@ Used as a source for syncing into BigQuery with a custom sync script.
 
 ## BigQuery Sync Script (Python)
 
-A Python script continuously syncs new data from PostgreSQL to BigQuery.
-
-### Features:
-- Tracks the latest synced `id` for each table
-- Automatically detects session changes
-- Truncates BigQuery tables on startup and on new session
-- Batches inserts to BigQuery using `insert_rows_json()`
+A Python script that continuously syncs new data from PostgreSQL to BigQuery. Bigquery tables are cleared when a new session begins and populated with new session data.
 
 ## Looker Dashboard
 
-Check out Looker folder for a snapshot of the live dashboard
+See "looker" folder for a snapshot of the live dashboard.
 
 ## Setup
 
@@ -112,6 +106,8 @@ Make sure your service account credentials are in gcp-credentials folder and you
 
 ### 3. Create GCP Resources
 
+Use Terraform to provision Cloud resources for the porject. You need to have Terraform set up.
+
 ```
 $ cd terraform
 $ terraform init
@@ -119,6 +115,9 @@ $ terraform apply
 ```
 
 4. Run Services with Docker
+
+Run the pipeline with docker-compose.
+
 ```
 $ cd ..
 $ docker-compose up
