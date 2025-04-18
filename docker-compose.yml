@@ -1,0 +1,184 @@
+version: '3'
+
+services:
+  # Redpanda - Streaming platform
+  redpanda:
+    image: redpandadata/redpanda:v23.2.14
+    ports:
+      - "9092:9092"
+    environment:
+      - REDPANDA_RPC_SERVER_LISTEN_ADDR=0.0.0.0
+      - REDPANDA_SEED_SERVERS=[]
+      - REDPANDA_KAFKA_ADDRESS=0.0.0.0:9092
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=redpanda:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    networks:
+    - f1-network
+
+  topic-init:
+    image: redpandadata/redpanda:v23.2.14
+    depends_on:
+      - redpanda
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      sleep 5 &&
+      rpk topic create f1-laps-enriched --brokers=redpanda:9092 &&
+      echo '✅ Topic f1-laps-enriched created'
+      "
+    networks:
+      - f1-network
+
+
+  # Redpanda Console - Web UI for Redpanda
+  redpanda-console:
+    image: redpandadata/console:v2.3.1
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+    depends_on:
+      - redpanda
+    networks:
+    - f1-network
+
+  # Data Extraction Service
+  extraction-service:
+    build:
+      context: ./extraction
+      dockerfile: Dockerfile
+    volumes:
+      - ./extraction:/app
+    depends_on:
+      - redpanda
+    environment:
+      - REDPANDA_BROKERS=redpanda:9092
+    restart: unless-stopped
+    # Add healthcheck to ensure it only starts after Redpanda is ready
+    healthcheck:
+      test: ["CMD", "nc", "-z", "redpanda", "9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+    - f1-network
+
+  postgres:
+    image: postgres:14
+    restart: on-failure
+    container_name: "postgres"
+    environment:
+      - POSTGRES_DB=f1_data
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    extra_hosts:
+     - "host.docker.internal:127.0.0.1" #// Linux
+     - "host.docker.internal:host-gateway" #// Access services on the host machine from within the Docker container
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - f1-network
+
+  # Flink JobManager
+  flink-jobmanager:
+    image: flink:1.17.0-scala_2.12
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        state.backend: filesystem
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        heartbeat.interval: 1000
+        heartbeat.timeout: 5000
+    volumes:
+      - ./processing:/opt/processing
+      - ./gcp-credentials:/opt/gcp-credentials
+      - flink-checkpoints:/tmp/flink-checkpoints
+    networks:
+    - f1-network
+
+  # Flink TaskManager
+  flink-taskmanager:
+    image: flink:1.17.0-scala_2.12
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        state.backend: filesystem
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        heartbeat.interval: 1000
+        heartbeat.timeout: 5000
+      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4
+    volumes:
+      - ./processing:/opt/processing
+      - ./gcp-credentials:/opt/gcp-credentials
+      - flink-checkpoints:/tmp/flink-checkpoints
+    networks:
+    - f1-network
+
+  # Flink Processing Job
+  flink-processor:
+    build:
+      context: ./processing
+      dockerfile: Dockerfile
+    depends_on:
+      - flink-jobmanager
+      - redpanda
+      - postgres
+    command: flink run -m flink-jobmanager:8081 -py /opt/processing/flink_processor.py
+    volumes:
+      - ./processing:/opt/processing
+      - ./gcp-credentials:/opt/gcp-credentials
+      - flink-checkpoints:/tmp/flink-checkpoints
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/gcp-credentials/service-account.json
+      - FLINK_JOBMANAGER_HOST=flink-jobmanager
+      - FLINK_JOBMANAGER_PORT=8081
+    networks:
+      - f1-network
+
+
+  bq-sync:
+    build:
+      context: ./bigquery_sync
+      dockerfile: Dockerfile
+    container_name: bq-sync
+    depends_on:
+      - postgres
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/gcp-credentials/service-account.json
+    volumes:
+      - ./gcp-credentials:/opt/gcp-credentials
+    networks:
+      - f1-network
+
+volumes:
+  redpanda-data:
+  flink-checkpoints:
+
+networks:
+  f1-network:
+    driver: bridge
